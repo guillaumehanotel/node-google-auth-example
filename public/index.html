@@ -1,0 +1,148 @@
+<html>
+<head>
+    <script src="https://apis.google.com/js/platform.js" async defer></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js" async defer></script>
+    <script type="text/javascript">
+
+
+        class Profile {
+            constructor(googleUser) {
+                let googleProfile = googleUser.getBasicProfile()
+                this.tokenId = googleUser.getAuthResponse().id_token
+                this.googleUid = googleProfile.getId()
+                this.fullname = googleProfile.getName()
+                this.lastname = googleProfile.getFamilyName()
+                this.firstname = googleProfile.getGivenName()
+                this.imageUrl = googleProfile.getImageUrl()
+                this.email = googleProfile.getEmail()
+            }
+
+            toString() {
+                return 'ID: ' + this.googleUid + '\n'
+                    + 'FullName: ' + this.fullname + '\n'
+                    + 'FirstName: ' + this.firstname + '\n'
+                    + 'LastName: ' + this.lastname + '\n'
+                    + 'Image URL: ' + this.imageUrl + '\n'
+                    + 'Email: ' + this.email
+            }
+        }
+
+        const CLIENT_ID = 'XXX-XXX.apps.googleusercontent.com'
+
+        function init() {
+
+            gapi.load('auth2', function () {
+                auth2 = gapi.auth2.init({
+                    client_id: CLIENT_ID
+                })
+                gapi.signin2.render('g-signin-btn', {
+                    scope: 'email',
+                    width: 300,
+                    height: 50,
+                    longtitle: false,
+                    theme: 'dark',
+                    onsuccess: onSignIn,
+                    onfailure: null
+                })
+            })
+            setTimeout(()=>{
+                let button = document.querySelector('span[id^=not_signed_]')
+                button.textContent = 'Connexion avec Google'
+                button.style.paddingRight = '20px'
+            }, 150)
+        }
+
+        async function onSignIn(googleUser) {
+            let userProfile = new Profile(googleUser)
+            const user = await getUser(userProfile)
+            console.log(user)
+            document.querySelector('#message').value = userProfile.toString()
+            setProfileImage(userProfile.imageUrl)
+        }
+
+
+        async function getUser(userProfile) {
+            let user = null
+            try {
+                const response = await axios.get('http://lvh.me:3000/me', {
+                    headers: {
+                        'Authorization': `Token ${ userProfile.tokenId }`
+                    }
+                })
+                user = response.data
+            } catch (e) {
+                if(e.response && e.response.status === 404) {
+                    user = createUser(userProfile)
+                } else {
+                    console.log(e)
+                }
+            }
+
+            return user
+        }
+
+        async function createUser(userProfile) {
+            try {
+                const response = await axios.post('http://lvh.me:3000/users', {
+                    headers: {
+                        'Authorization': `Token ${ userProfile.tokenId }`
+                    },
+                    firstname: userProfile.firstname,
+                    lastname: userProfile.lastname,
+                    email: userProfile.email,
+                    fullname: userProfile.fullname,
+                    imageUrl: userProfile.imageUrl,
+                    googleUid: userProfile.googleUid,
+                })
+                return response.data
+            } catch (e) {
+                console.log(e.response)
+            }
+        }
+
+        // permet à la prochaine reconnexion, d'éviter la sélection du compte GMAIL
+        function signOut() {
+            const auth2 = gapi.auth2.getAuthInstance()
+            auth2.signOut().then(function () {
+                setMessage('User signed out')
+                setProfileImage(null)
+            })
+        }
+
+        function disconnect() {
+            const auth2 = gapi.auth2.getAuthInstance()
+            if (!auth2.isSignedIn.get()) {
+                setMessage('Not signed in, cannot disconnect')
+                return
+            }
+            auth2.disconnect()
+            setProfileImage(null)
+            setMessage('Disconnected')
+        }
+
+        function setMessage(message) {
+            document.getElementById('message').value = message
+        }
+
+        function setProfileImage(srcUrl) {
+            let element = document.querySelector('#profileImage')
+            element.src = srcUrl == null ? '' : srcUrl
+            element.style.display = srcUrl == null ? 'none' : 'block'
+        }
+    </script>
+
+</head>
+
+<body onload="init()">
+
+<div id="g-signin-btn"></div>
+
+<div><a href="#" onclick="signOut();">Sign out</a></div>
+
+<div><a href="#" onclick="disconnect();">Disconnect</a></div>
+
+<div><img id="profileImage" src=""/></div>
+
+<textarea id="message" cols="80" rows="10"></textarea>
+</body>
+</html>
